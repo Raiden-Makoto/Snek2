@@ -178,10 +178,12 @@ class GameState {
         if (this.cannotEatApples) {
             this.cannotEatTimer -= deltaTime;
             
-            this.poisonSoundTimer -= deltaTime;
-            if (this.poisonSoundTimer <= 0.0) {
-                this.playSound('poison');
-                this.poisonSoundTimer = 1.0;
+            if (!this.gameOver) {
+                this.poisonSoundTimer -= deltaTime;
+                if (this.poisonSoundTimer <= 0.0) {
+                    this.playSound('poison');
+                    this.poisonSoundTimer = 1.0;
+                }
             }
             
             if (this.cannotEatTimer <= 0.0) {
@@ -482,6 +484,13 @@ class GameLogic {
             if (eatenFoodType === FoodType.POMME_SUPREME) {
                 state.canPassWalls = true;
                 state.wallImmunityTimer = GameConstants.WALL_IMMUNITY_DURATION;
+            }
+            
+            // Cure poison when eating gold apples
+            if (state.cannotEatApples) {
+                state.cannotEatApples = false;
+                state.cannotEatTimer = 0.0;
+                state.poisonSoundTimer = 0.0;
             }
             
             state.playSound('golden');

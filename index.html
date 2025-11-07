@@ -17,14 +17,17 @@
             color: #fff;
             display: flex;
             justify-content: center;
-            align-items: center;
+            align-items: flex-start;
             min-height: 100vh;
-            overflow: hidden;
+            padding: 20px 0;
+            overflow-x: hidden;
+            overflow-y: auto;
         }
         
         #game-container {
             position: relative;
             background: #000;
+            transform-origin: top center;
         }
         
         #canvas {

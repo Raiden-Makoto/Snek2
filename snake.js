@@ -549,38 +549,32 @@ class GameLogic {
     }
     
     static handleAppleConsumption(state, eatenAppleIndex) {
-        const eatenFoodType = state.apples[eatenAppleIndex].type;
+        let eatenFoodType = state.apples[eatenAppleIndex].type;
         state.apples.splice(eatenAppleIndex, 1);
-        
-        if (eatenFoodType === FoodType.POISONOUS) {
-            // Poisoned apples do nothing if resistance is active
-            if (state.canIntersectSelf || state.canPassWalls) {
-                // Just eat the apple without any effect - treat it like a regular apple
-                state.snake.push({...state.snake[state.snake.length - 1]});
-                state.score++;
-                state.updateHighScore();
-                state.playSound('apple');
-                return;
+        const hasResistance = state.canIntersectSelf || state.canPassWalls;
+
+        if (eatenFoodType === FoodType.POISONOUS && !hasResistance) {
+            state.isPaused = true;
+            state.pauseTimer = GameConstants.PAUSE_DURATION;
+            state.directionQueue = [];
+            
+            state.snake.reverse();
+            state.snake.pop();
+            
+            state.dx = -state.dx;
+            state.dy = -state.dy;
+            
+            state.cannotEatApples = true;
+            // Stack poison duration: add 10 seconds if already poisoned, otherwise set to 10 seconds
+            if (state.cannotEatTimer > 0.0) {
+                state.cannotEatTimer += GameConstants.CANNOT_EAT_DURATION;
             } else {
-                state.isPaused = true;
-                state.pauseTimer = GameConstants.PAUSE_DURATION;
-                state.directionQueue = [];
-                
-                state.snake.reverse();
-                state.snake.pop();
-                
-                state.dx = -state.dx;
-                state.dy = -state.dy;
-                
-                state.cannotEatApples = true;
-                // Stack poison duration: add 10 seconds if already poisoned, otherwise set to 10 seconds
-                if (state.cannotEatTimer > 0.0) {
-                    state.cannotEatTimer += GameConstants.CANNOT_EAT_DURATION;
-                } else {
-                    state.cannotEatTimer = GameConstants.CANNOT_EAT_DURATION;
-                }
-                state.poisonSoundTimer = 1.0;
+                state.cannotEatTimer = GameConstants.CANNOT_EAT_DURATION;
             }
+            state.poisonSoundTimer = 1.0;
+        } else if (eatenFoodType === FoodType.POISONOUS && hasResistance) {
+            // Treat poisonous apples as regular when any resistance is active
+            eatenFoodType = FoodType.REGULAR;
         } else if (eatenFoodType === FoodType.TELEPORT) {
             if (!state.cannotEatApples) {
                 state.snake.shift();
@@ -1018,6 +1012,7 @@ class Game {
         
         this.loadSounds();
         this.setupEventListeners();
+        this.setupResponsiveScaling();
         this.gameLoop();
     }
     
@@ -1030,8 +1025,48 @@ class Game {
         });
     }
     
+    setupResponsiveScaling() {
+        const container = document.getElementById('game-container');
+        if (!container) {
+            return;
+        }
+
+        const updateScale = () => {
+            const widthScale = window.innerWidth / GameConstants.SCREEN_WIDTH;
+            const heightScaleRaw = (window.innerHeight - 40) / GameConstants.SCREEN_HEIGHT;
+            const heightScale = heightScaleRaw > 0 ? heightScaleRaw : widthScale;
+            const scale = Math.min(1, widthScale, heightScale);
+
+            container.style.transform = `scale(${scale})`;
+
+            const scaledHeight = GameConstants.SCREEN_HEIGHT * scale;
+            const scaledWidth = GameConstants.SCREEN_WIDTH * scale;
+
+            const verticalSpace = window.innerHeight - scaledHeight;
+            const horizontalSpace = window.innerWidth - scaledWidth;
+
+            const topMargin = verticalSpace > 0 ? verticalSpace / 2 : 20;
+            const bottomMargin = verticalSpace > 0 ? verticalSpace / 2 : 20;
+            container.style.marginTop = `${Math.max(topMargin, 20)}px`;
+            container.style.marginBottom = `${Math.max(bottomMargin, 20)}px`;
+
+            const sideMargin = horizontalSpace > 0 ? horizontalSpace / 2 : 0;
+            container.style.marginLeft = `${Math.max(sideMargin, 0)}px`;
+            container.style.marginRight = `${Math.max(sideMargin, 0)}px`;
+        };
+
+        updateScale();
+        window.addEventListener('resize', updateScale);
+        window.addEventListener('orientationchange', updateScale);
+    }
+
     setupEventListeners() {
         window.addEventListener('keydown', (e) => {
+            const scrollingKeys = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' ', 'Space', 'PageUp', 'PageDown'];
+            if (scrollingKeys.includes(e.key) || scrollingKeys.includes(e.code) || ['w', 'a', 's', 'd', 'W', 'A', 'S', 'D'].includes(e.key)) {
+                e.preventDefault();
+            }
+
             this.keys[e.key.toLowerCase()] = true;
             this.keys[e.code.toLowerCase()] = true;
             
@@ -1228,6 +1263,20 @@ class Game {
                     }
                 }
             }
+        });
+
+        window.addEventListener('keyup', (e) => {
+            const scrollingKeys = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' ', 'Space', 'PageUp', 'PageDown'];
+            if (scrollingKeys.includes(e.key) || scrollingKeys.includes(e.code) || ['w', 'a', 's', 'd', 'W', 'A', 'S', 'D'].includes(e.key)) {
+                e.preventDefault();
+            }
+
+            delete this.keys[e.key.toLowerCase()];
+            delete this.keys[e.code.toLowerCase()];
+        });
+
+        window.addEventListener('blur', () => {
+            this.keys = {};
         });
     }
     

@@ -223,8 +223,35 @@ class GameState {
         if (this.canIntersectSelf) {
             this.immunityTimer -= deltaTime;
             if (this.immunityTimer <= 0.0) {
-                this.canIntersectSelf = false;
-                this.immunityTimer = 0.0;
+                // Only disable immunity if we're not currently moving into a self-intersecting position
+                // Check if the next movement would cause self-intersection
+                if (this.snake.length > 0 && (this.dx !== 0 || this.dy !== 0)) {
+                    const head = this.snake[0];
+                    const nextHead = {
+                        col: head.col + this.dx,
+                        row: head.row + this.dy
+                    };
+                    let wouldIntersect = false;
+                    for (let i = 0; i < this.snake.length; i++) {
+                        const segment = this.snake[i];
+                        if (segment && 
+                            segment.col === nextHead.col && segment.row === nextHead.row) {
+                            wouldIntersect = true;
+                            break;
+                        }
+                    }
+                    if (wouldIntersect) {
+                        // Keep immunity active until we're in a safe position
+                        this.immunityTimer = 0.01; // Small value to check again soon
+                    } else {
+                        this.canIntersectSelf = false;
+                        this.immunityTimer = 0.0;
+                    }
+                } else {
+                    // No movement or no snake, safe to disable
+                    this.canIntersectSelf = false;
+                    this.immunityTimer = 0.0;
+                }
             }
         }
         
@@ -251,8 +278,27 @@ class GameState {
         if (this.canPassWalls) {
             this.wallImmunityTimer -= deltaTime;
             if (this.wallImmunityTimer <= 0.0) {
-                this.canPassWalls = false;
-                this.wallImmunityTimer = 0.0;
+                // Only disable immunity if we're not currently moving outside bounds
+                // Check if the next movement would go outside bounds
+                if (this.snake.length > 0 && (this.dx !== 0 || this.dy !== 0)) {
+                    const head = this.snake[0];
+                    const nextHead = {
+                        col: head.col + this.dx,
+                        row: head.row + this.dy
+                    };
+                    if (nextHead.col < 0 || nextHead.col >= GameConstants.GRID_WIDTH ||
+                        nextHead.row < 0 || nextHead.row >= GameConstants.GRID_HEIGHT) {
+                        // Keep immunity active until we're in a safe position
+                        this.wallImmunityTimer = 0.01; // Small value to check again soon
+                    } else {
+                        this.canPassWalls = false;
+                        this.wallImmunityTimer = 0.0;
+                    }
+                } else {
+                    // No movement or no snake, safe to disable
+                    this.canPassWalls = false;
+                    this.wallImmunityTimer = 0.0;
+                }
             }
         }
         
@@ -284,15 +330,15 @@ class GameState {
     }
     
     updateAppleDespawn(deltaTime) {
-        if (this.gameMode !== GameMode.ACCELERATED) {
-            return;
+        // Only despawn apples in ACCELERATED mode
+        if (this.gameMode === GameMode.ACCELERATED) {
+            this.apples = this.apples.filter(apple => {
+                const elapsed = this.gameTime - apple.spawnTime;
+                return elapsed < apple.despawnTime;
+            });
         }
         
-        this.apples = this.apples.filter(apple => {
-            const elapsed = this.gameTime - apple.spawnTime;
-            return elapsed < apple.despawnTime;
-        });
-        
+        // Always maintain minimum apples for all game modes
         while (this.apples.length < GameConstants.MIN_APPLES) {
             if (!this.spawnApple(this.gameTime)) {
                 break;
@@ -499,24 +545,34 @@ class GameLogic {
         state.apples.splice(eatenAppleIndex, 1);
         
         if (eatenFoodType === FoodType.POISONOUS) {
-            state.isPaused = true;
-            state.pauseTimer = GameConstants.PAUSE_DURATION;
-            state.directionQueue = [];
-            
-            state.snake.reverse();
-            state.snake.pop();
-            
-            state.dx = -state.dx;
-            state.dy = -state.dy;
-            
-            state.cannotEatApples = true;
-            // Stack poison duration: add 10 seconds if already poisoned, otherwise set to 10 seconds
-            if (state.cannotEatTimer > 0.0) {
-                state.cannotEatTimer += GameConstants.CANNOT_EAT_DURATION;
+            // Poisoned apples do nothing if resistance is active
+            if (state.canIntersectSelf || state.canPassWalls) {
+                // Just eat the apple without any effect - treat it like a regular apple
+                state.snake.push({...state.snake[state.snake.length - 1]});
+                state.score++;
+                state.updateHighScore();
+                state.playSound('apple');
+                return;
             } else {
-                state.cannotEatTimer = GameConstants.CANNOT_EAT_DURATION;
+                state.isPaused = true;
+                state.pauseTimer = GameConstants.PAUSE_DURATION;
+                state.directionQueue = [];
+                
+                state.snake.reverse();
+                state.snake.pop();
+                
+                state.dx = -state.dx;
+                state.dy = -state.dy;
+                
+                state.cannotEatApples = true;
+                // Stack poison duration: add 10 seconds if already poisoned, otherwise set to 10 seconds
+                if (state.cannotEatTimer > 0.0) {
+                    state.cannotEatTimer += GameConstants.CANNOT_EAT_DURATION;
+                } else {
+                    state.cannotEatTimer = GameConstants.CANNOT_EAT_DURATION;
+                }
+                state.poisonSoundTimer = 1.0;
             }
-            state.poisonSoundTimer = 1.0;
         } else if (eatenFoodType === FoodType.TELEPORT) {
             if (!state.cannotEatApples) {
                 state.snake.shift();

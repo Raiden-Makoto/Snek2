@@ -114,12 +114,14 @@ class GameState {
     
     isValidPosition(col, row) {
         for (const segment of this.snake) {
-            if (col === segment.col && row === segment.row) {
+            if (segment && segment.col !== undefined && segment.row !== undefined &&
+                col === segment.col && row === segment.row) {
                 return false;
             }
         }
         for (const apple of this.apples) {
-            if (col === apple.col && row === apple.row) {
+            if (apple && apple.col !== undefined && apple.row !== undefined &&
+                col === apple.col && row === apple.row) {
                 return false;
             }
         }
@@ -314,7 +316,7 @@ class GameLogic {
             
             GameLogic.processDirectionQueue(state);
             
-            if (state.dx !== 0 || state.dy !== 0) {
+            if ((state.dx !== 0 || state.dy !== 0) && state.snake.length > 0) {
                 let newHead = {
                     col: state.snake[0].col + state.dx,
                     row: state.snake[0].row + state.dy
@@ -367,7 +369,8 @@ class GameLogic {
         let hitSelf = false;
         if (!state.canIntersectSelf) {
             for (const segment of state.snake) {
-                if (newHead.col === segment.col && newHead.row === segment.row) {
+                if (segment && segment.col !== undefined && segment.row !== undefined &&
+                    newHead.col === segment.col && newHead.row === segment.row) {
                     hitSelf = true;
                     break;
                 }
@@ -388,9 +391,11 @@ class GameLogic {
         let eatenAppleIndex = -1;
         let eatenFoodType = FoodType.REGULAR;
         for (let i = 0; i < state.apples.length; i++) {
-            if (newHead.col === state.apples[i].col && newHead.row === state.apples[i].row) {
+            const apple = state.apples[i];
+            if (apple && apple.col !== undefined && apple.row !== undefined &&
+                newHead.col === apple.col && newHead.row === apple.row) {
                 eatenAppleIndex = i;
-                eatenFoodType = state.apples[i].type;
+                eatenFoodType = apple.type;
                 break;
             }
         }
@@ -615,8 +620,6 @@ class Renderer {
         currentY += lineHeight;
         ctx.fillText('P - Pause/Unpause', leftMargin, currentY);
         currentY += lineHeight;
-        ctx.fillText('Q - Show game over screen (or quit)', leftMargin, currentY);
-        currentY += lineHeight;
         ctx.fillText('ESC - Exit game', leftMargin, currentY);
         currentY += lineHeight;
         ctx.fillText('R / Space - Restart (on game over)', leftMargin, currentY);
@@ -666,6 +669,7 @@ class Renderer {
         
         // Draw apples
         for (const apple of state.apples) {
+            if (!apple || apple.col === undefined || apple.row === undefined) continue;
             let foodColor;
             if (apple.type === FoodType.POMME_SUPREME) {
                 foodColor = GameConstants.ENCHANTED_GOLD_COLOR;
@@ -687,6 +691,7 @@ class Renderer {
         // Draw snake
         for (let i = 1; i < state.snake.length; i++) {
             const segment = state.snake[i];
+            if (!segment || segment.col === undefined || segment.row === undefined) continue;
             ctx.fillStyle = GameConstants.SNAKE_COLOR;
             ctx.fillRect((segment.col + GameConstants.BORDER_OFFSET) * cellSize,
                         boardStartY + (segment.row + GameConstants.BORDER_OFFSET) * cellSize,
@@ -695,10 +700,12 @@ class Renderer {
         
         if (state.snake.length > 0) {
             const head = state.snake[0];
-            ctx.fillStyle = GameConstants.SNAKE_HEAD_COLOR;
-            ctx.fillRect((head.col + GameConstants.BORDER_OFFSET) * cellSize,
-                        boardStartY + (head.row + GameConstants.BORDER_OFFSET) * cellSize,
-                        cellSize, cellSize);
+            if (head && head.col !== undefined && head.row !== undefined) {
+                ctx.fillStyle = GameConstants.SNAKE_HEAD_COLOR;
+                ctx.fillRect((head.col + GameConstants.BORDER_OFFSET) * cellSize,
+                            boardStartY + (head.row + GameConstants.BORDER_OFFSET) * cellSize,
+                            cellSize, cellSize);
+            }
         }
         
         // Update score display
@@ -743,7 +750,7 @@ class Renderer {
         ctx.font = '24px monospace';
         ctx.fillText('Press R or SPACE to restart', GameConstants.SCREEN_WIDTH / 2, 520);
         ctx.fillText('Press M to return to menu', GameConstants.SCREEN_WIDTH / 2, 555);
-        ctx.fillText('Press ESC to exit or Q to quit', GameConstants.SCREEN_WIDTH / 2, 590);
+        ctx.fillText('Press ESC to exit', GameConstants.SCREEN_WIDTH / 2, 590);
     }
     
     static drawPauseScreen(ctx, state) {
@@ -757,7 +764,7 @@ class Renderer {
         
         ctx.fillStyle = '#d3d3d3';
         ctx.font = '24px monospace';
-        ctx.fillText('Press P to resume (or Q to quit)', GameConstants.SCREEN_WIDTH / 2, 450);
+        ctx.fillText('Press P to resume', GameConstants.SCREEN_WIDTH / 2, 450);
     }
     
     static drawResumeCountdown(ctx, state) {
@@ -789,7 +796,7 @@ class Game {
     loadSounds() {
         const soundFiles = ['apple', 'poison', 'golden', 'purple', 'gameover', 'pause'];
         soundFiles.forEach(soundName => {
-            const audio = new Audio(`sounds/${soundName}.mp3`);
+            const audio = new Audio(`sound/${soundName}.mp3`);
             audio.preload = 'auto';
             this.state.sounds[soundName] = audio;
         });
@@ -813,6 +820,12 @@ class Game {
                     this.state.showModeSelection = false;
                     this.state.showInstructions = true;
                     
+                    // Initialize snake
+                    this.state.snake = [{
+                        col: Math.floor(Math.random() * GameConstants.GRID_WIDTH),
+                        row: Math.floor(Math.random() * GameConstants.GRID_HEIGHT)
+                    }];
+                    
                     this.state.apples = [];
                     if (this.state.gameMode === GameMode.ACCELERATED) {
                         for (let i = 0; i < 3; i++) {
@@ -821,6 +834,29 @@ class Game {
                     } else {
                         this.state.spawnApple(0.0);
                     }
+                    
+                    // Reset game state
+                    this.state.dx = 0;
+                    this.state.dy = 0;
+                    this.state.directionQueue = [];
+                    this.state.moveTimer = 0.0;
+                    this.state.gameTime = 0.0;
+                    this.state.score = 0;
+                    this.state.gameOver = false;
+                    this.state.canIntersectSelf = false;
+                    this.state.immunityTimer = 0.0;
+                    this.state.canPassWalls = false;
+                    this.state.wallImmunityTimer = 0.0;
+                    this.state.cannotEatApples = false;
+                    this.state.cannotEatTimer = 0.0;
+                    this.state.isPaused = false;
+                    this.state.pauseTimer = 0.0;
+                    this.state.isUserPaused = false;
+                    this.state.isResuming = false;
+                    this.state.resumeDelayTimer = 0.0;
+                    this.state.poisonSoundTimer = 0.0;
+                    this.state.pauseSoundTimer = 0.0;
+                    this.state.gameOverSoundPlayed = false;
                 }
                 return;
             }
@@ -844,6 +880,10 @@ class Game {
             if (e.key === 'q' || e.key === 'Q') {
                 if (!this.state.gameOver) {
                     this.state.gameOver = true;
+                    if (!this.state.gameOverSoundPlayed) {
+                        this.state.playSound('gameover');
+                        this.state.gameOverSoundPlayed = true;
+                    }
                 }
                 return;
             }

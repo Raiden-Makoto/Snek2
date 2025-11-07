@@ -59,7 +59,7 @@ Then open `http://localhost:8000` in your browser.
 Snek/
 ├── index.html      # Main HTML file
 ├── snake.js        # Game logic and rendering
-├── sounds/         # Sound effects directory
+├── sound/          # Sound effects directory
 │   ├── apple.mp3
 │   ├── poison.mp3
 │   ├── golden.mp3

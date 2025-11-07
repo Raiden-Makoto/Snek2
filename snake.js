@@ -278,16 +278,24 @@ class GameState {
         if (this.canPassWalls) {
             this.wallImmunityTimer -= deltaTime;
             if (this.wallImmunityTimer <= 0.0) {
-                // Only disable immunity if we're not currently moving outside bounds
-                // Check if the next movement would go outside bounds
+                // Only disable immunity if we're not about to wrap or self-intersect
                 if (this.snake.length > 0 && (this.dx !== 0 || this.dy !== 0)) {
                     const head = this.snake[0];
                     const nextHead = {
                         col: head.col + this.dx,
                         row: head.row + this.dy
                     };
-                    if (nextHead.col < 0 || nextHead.col >= GameConstants.GRID_WIDTH ||
-                        nextHead.row < 0 || nextHead.row >= GameConstants.GRID_HEIGHT) {
+                    const wouldWrap = nextHead.col < 0 || nextHead.col >= GameConstants.GRID_WIDTH ||
+                        nextHead.row < 0 || nextHead.row >= GameConstants.GRID_HEIGHT;
+                    let wouldIntersectSelf = false;
+                    for (let i = 0; i < this.snake.length; i++) {
+                        const segment = this.snake[i];
+                        if (segment && segment.col === nextHead.col && segment.row === nextHead.row) {
+                            wouldIntersectSelf = true;
+                            break;
+                        }
+                    }
+                    if (wouldWrap || wouldIntersectSelf) {
                         // Keep immunity active until we're in a safe position
                         this.wallImmunityTimer = 0.01; // Small value to check again soon
                     } else {
@@ -490,7 +498,7 @@ class GameLogic {
     
     static checkCollisions(state, newHead) {
         let hitSelf = false;
-        if (!state.canIntersectSelf) {
+        if (!state.canIntersectSelf && !state.canPassWalls) {
             for (const segment of state.snake) {
                 if (segment && segment.col !== undefined && segment.row !== undefined &&
                     newHead.col === segment.col && newHead.row === segment.row) {

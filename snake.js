@@ -26,6 +26,7 @@ const GameConstants = {
     MOVE_INTERVAL_ACCELERATED: 0.20,
     IMMUNITY_DURATION: 10.0,
     WALL_IMMUNITY_DURATION: 10.0,
+    EASY_MODE_LIFE_IMMUNITY_DURATION: 5.0,
     CANNOT_EAT_DURATION: 10.0,
     PAUSE_DURATION: 0.5,
     RESUME_DELAY_DURATION: 2.0,
@@ -49,21 +50,36 @@ const FoodType = {
 // Game modes
 const GameMode = {
     REGULAR: 0,
-    ACCELERATED: 1
+    ACCELERATED: 1,
+    CLASSIC: 2
+};
+
+// Difficulty levels
+const Difficulty = {
+    EASY: 0,
+    NORMAL: 1
 };
 
 // Game State
 class GameState {
     constructor() {
+        this.difficulty = Difficulty.NORMAL;
         this.gameMode = GameMode.REGULAR;
-        this.showModeSelection = true;
+        this.showDifficultySelection = true;
+        this.showModeSelection = false;
         this.showInstructions = false;
         this.gameOver = false;
+        this.selectedDifficultyIndex = 0;
         this.selectedModeIndex = 0;
+        this.lives = 2;
         
         this.score = 0;
-        this.highScoreRegular = 0;
-        this.highScoreAccelerated = 0;
+        this.highScoreRegularEasy = 0;
+        this.highScoreRegularNormal = 0;
+        this.highScoreAcceleratedEasy = 0;
+        this.highScoreAcceleratedNormal = 0;
+        this.highScoreClassicEasy = 0;
+        this.highScoreClassicNormal = 0;
         
         this.snake = [];
         this.dx = 0;
@@ -95,19 +111,51 @@ class GameState {
     }
     
     getCurrentHighScore() {
-        return this.gameMode === GameMode.ACCELERATED 
-            ? this.highScoreAccelerated 
-            : this.highScoreRegular;
+        if (this.gameMode === GameMode.ACCELERATED) {
+            return this.difficulty === Difficulty.EASY 
+                ? this.highScoreAcceleratedEasy 
+                : this.highScoreAcceleratedNormal;
+        } else if (this.gameMode === GameMode.CLASSIC) {
+            return this.difficulty === Difficulty.EASY 
+                ? this.highScoreClassicEasy 
+                : this.highScoreClassicNormal;
+        } else {
+            return this.difficulty === Difficulty.EASY 
+                ? this.highScoreRegularEasy 
+                : this.highScoreRegularNormal;
+        }
     }
     
     updateHighScore() {
         if (this.gameMode === GameMode.ACCELERATED) {
-            if (this.score > this.highScoreAccelerated) {
-                this.highScoreAccelerated = this.score;
+            if (this.difficulty === Difficulty.EASY) {
+                if (this.score > this.highScoreAcceleratedEasy) {
+                    this.highScoreAcceleratedEasy = this.score;
+                }
+            } else {
+                if (this.score > this.highScoreAcceleratedNormal) {
+                    this.highScoreAcceleratedNormal = this.score;
+                }
+            }
+        } else if (this.gameMode === GameMode.CLASSIC) {
+            if (this.difficulty === Difficulty.EASY) {
+                if (this.score > this.highScoreClassicEasy) {
+                    this.highScoreClassicEasy = this.score;
+                }
+            } else {
+                if (this.score > this.highScoreClassicNormal) {
+                    this.highScoreClassicNormal = this.score;
+                }
             }
         } else {
-            if (this.score > this.highScoreRegular) {
-                this.highScoreRegular = this.score;
+            if (this.difficulty === Difficulty.EASY) {
+                if (this.score > this.highScoreRegularEasy) {
+                    this.highScoreRegularEasy = this.score;
+                }
+            } else {
+                if (this.score > this.highScoreRegularNormal) {
+                    this.highScoreRegularNormal = this.score;
+                }
             }
         }
     }
@@ -129,6 +177,11 @@ class GameState {
     }
     
     getRandomFoodType() {
+        // In classic mode, always return regular apples
+        if (this.gameMode === GameMode.CLASSIC) {
+            return FoodType.REGULAR;
+        }
+        
         const roll = Math.floor(Math.random() * 100) + 1;
         if (roll <= 4) return FoodType.POMME_PLUS;
         if (roll <= 5) return FoodType.POMME_SUPREME;
@@ -260,6 +313,7 @@ class GameState {
         this.showModeSelection = false;
         this.showInstructions = false;
         this.gameTime = 0.0;
+        this.lives = this.difficulty === Difficulty.EASY ? 2 : 1;
         
         this.snake = [{
             col: Math.floor(Math.random() * GameConstants.GRID_WIDTH),
@@ -338,13 +392,34 @@ class GameLogic {
                 } else {
                     if (newHead.col < 0 || newHead.col >= GameConstants.GRID_WIDTH ||
                         newHead.row < 0 || newHead.row >= GameConstants.GRID_HEIGHT) {
-                        state.updateHighScore();
-                        state.gameOver = true;
-                        if (!state.gameOverSoundPlayed) {
-                            state.playSound('gameover');
-                            state.gameOverSoundPlayed = true;
+                        if (state.difficulty === Difficulty.EASY && state.lives > 0) {
+                            // Use a life and apply wall wrapping
+                            state.lives--;
+                            state.canPassWalls = true;
+                            state.wallImmunityTimer = GameConstants.EASY_MODE_LIFE_IMMUNITY_DURATION;
+                            // Wrap the snake to the other side
+                            if (newHead.col < 0) {
+                                newHead.col = GameConstants.GRID_WIDTH - 1;
+                            } else if (newHead.col >= GameConstants.GRID_WIDTH) {
+                                newHead.col = 0;
+                            }
+                            if (newHead.row < 0) {
+                                newHead.row = GameConstants.GRID_HEIGHT - 1;
+                            } else if (newHead.row >= GameConstants.GRID_HEIGHT) {
+                                newHead.row = 0;
+                            }
+                            state.snake.unshift(newHead);
+                            state.snake.pop();
+                            return;
+                        } else {
+                            state.updateHighScore();
+                            state.gameOver = true;
+                            if (!state.gameOverSoundPlayed) {
+                                state.playSound('gameover');
+                                state.gameOverSoundPlayed = true;
+                            }
+                            return;
                         }
-                        return;
                     }
                 }
                 
@@ -380,14 +455,22 @@ class GameLogic {
         }
         
         if (hitSelf) {
-            state.snake.unshift(newHead);
-            state.updateHighScore();
-            state.gameOver = true;
-            if (!state.gameOverSoundPlayed) {
-                state.playSound('gameover');
-                state.gameOverSoundPlayed = true;
+            if (state.difficulty === Difficulty.EASY && state.lives > 0) {
+                // Use a life and apply wall wrapping
+                state.lives--;
+                state.canPassWalls = true;
+                state.wallImmunityTimer = GameConstants.EASY_MODE_LIFE_IMMUNITY_DURATION;
+                // Continue movement (snake will be updated below)
+            } else {
+                state.snake.unshift(newHead);
+                state.updateHighScore();
+                state.gameOver = true;
+                if (!state.gameOverSoundPlayed) {
+                    state.playSound('gameover');
+                    state.gameOverSoundPlayed = true;
+                }
+                return;
             }
-            return;
         }
         
         let eatenAppleIndex = -1;
@@ -427,7 +510,12 @@ class GameLogic {
             state.dy = -state.dy;
             
             state.cannotEatApples = true;
-            state.cannotEatTimer = GameConstants.CANNOT_EAT_DURATION;
+            // Stack poison duration: add 10 seconds if already poisoned, otherwise set to 10 seconds
+            if (state.cannotEatTimer > 0.0) {
+                state.cannotEatTimer += GameConstants.CANNOT_EAT_DURATION;
+            } else {
+                state.cannotEatTimer = GameConstants.CANNOT_EAT_DURATION;
+            }
             state.poisonSoundTimer = 1.0;
         } else if (eatenFoodType === FoodType.TELEPORT) {
             if (!state.cannotEatApples) {
@@ -478,19 +566,36 @@ class GameLogic {
             state.updateHighScore();
             
             state.snake.push({...state.snake[state.snake.length - 1]});
-            state.canIntersectSelf = true;
-            state.immunityTimer = GameConstants.IMMUNITY_DURATION;
             
-            if (eatenFoodType === FoodType.POMME_SUPREME) {
-                state.canPassWalls = true;
-                state.wallImmunityTimer = GameConstants.WALL_IMMUNITY_DURATION;
-            }
-            
-            // Cure poison when eating gold apples
+            // Cure poison when eating any pomme
             if (state.cannotEatApples) {
                 state.cannotEatApples = false;
                 state.cannotEatTimer = 0.0;
                 state.poisonSoundTimer = 0.0;
+            }
+            
+            if (eatenFoodType === FoodType.POMME_SUPREME) {
+                // Cancel Resistance I if active before applying Resistance II
+                if (state.canIntersectSelf) {
+                    state.canIntersectSelf = false;
+                    state.immunityTimer = 0.0;
+                }
+                state.canPassWalls = true;
+                // Stack Resistance II duration: add 10 seconds if already active, otherwise set to 10 seconds
+                if (state.wallImmunityTimer > 0.0) {
+                    state.wallImmunityTimer += GameConstants.WALL_IMMUNITY_DURATION;
+                } else {
+                    state.wallImmunityTimer = GameConstants.WALL_IMMUNITY_DURATION;
+                }
+            } else {
+                // Pomme Plus: Apply Resistance I
+                state.canIntersectSelf = true;
+                // Stack Resistance I duration: add 10 seconds if already active, otherwise set to 10 seconds
+                if (state.immunityTimer > 0.0) {
+                    state.immunityTimer += GameConstants.IMMUNITY_DURATION;
+                } else {
+                    state.immunityTimer = GameConstants.IMMUNITY_DURATION;
+                }
             }
             
             state.playSound('golden');
@@ -517,6 +622,40 @@ class GameLogic {
 
 // Renderer
 class Renderer {
+    static drawDifficultySelectionScreen(ctx, state) {
+        ctx.fillStyle = '#000';
+        ctx.fillRect(0, 0, GameConstants.SCREEN_WIDTH, GameConstants.SCREEN_HEIGHT);
+        
+        ctx.fillStyle = '#fff';
+        ctx.font = '60px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText('SNAKE GAME', GameConstants.SCREEN_WIDTH / 2, 230);
+        
+        ctx.fillStyle = '#ffff00';
+        ctx.font = '32px monospace';
+        ctx.fillText('Select Difficulty', GameConstants.SCREEN_WIDTH / 2, 310);
+        
+        ctx.font = '36px monospace';
+        const diffStartY = 410;
+        const diffSpacing = 80;
+        
+        ctx.fillStyle = state.selectedDifficultyIndex === 0 ? '#00ff00' : '#d3d3d3';
+        ctx.fillText('Easy (2 lives)', GameConstants.SCREEN_WIDTH / 2, diffStartY);
+        
+        ctx.fillStyle = state.selectedDifficultyIndex === 1 ? '#00ff00' : '#d3d3d3';
+        ctx.fillText('Normal', GameConstants.SCREEN_WIDTH / 2, diffStartY + diffSpacing);
+        
+        ctx.fillStyle = '#00ff00';
+        ctx.font = '20px monospace';
+        ctx.fillText('>', GameConstants.SCREEN_WIDTH / 2 - 150, 
+                    diffStartY + (state.selectedDifficultyIndex * diffSpacing) - 10);
+        
+        ctx.fillStyle = '#d3d3d3';
+        ctx.font = '20px monospace';
+        ctx.fillText('Use UP/DOWN or W/S to select, SPACE or ENTER to confirm',
+                    GameConstants.SCREEN_WIDTH / 2, diffStartY + diffSpacing * 2 + 40);
+    }
+    
     static drawModeSelectionScreen(ctx, state) {
         ctx.fillStyle = '#000';
         ctx.fillRect(0, 0, GameConstants.SCREEN_WIDTH, GameConstants.SCREEN_HEIGHT);
@@ -531,14 +670,17 @@ class Renderer {
         ctx.fillText('Select Game Mode', GameConstants.SCREEN_WIDTH / 2, 310);
         
         ctx.font = '36px monospace';
-        const modeStartY = 410;
-        const modeSpacing = 80;
+        const modeStartY = 380;
+        const modeSpacing = 70;
         
         ctx.fillStyle = state.selectedModeIndex === 0 ? '#00ff00' : '#d3d3d3';
         ctx.fillText('Regular', GameConstants.SCREEN_WIDTH / 2, modeStartY);
         
         ctx.fillStyle = state.selectedModeIndex === 1 ? '#00ff00' : '#d3d3d3';
         ctx.fillText('Accelerated', GameConstants.SCREEN_WIDTH / 2, modeStartY + modeSpacing);
+        
+        ctx.fillStyle = state.selectedModeIndex === 2 ? '#00ff00' : '#d3d3d3';
+        ctx.fillText('Classic', GameConstants.SCREEN_WIDTH / 2, modeStartY + modeSpacing * 2);
         
         ctx.fillStyle = '#00ff00';
         ctx.font = '20px monospace';
@@ -570,6 +712,14 @@ class Renderer {
         const lineHeight = 28;
         const leftMargin = 40;
         
+        ctx.fillStyle = '#00ff00';
+        ctx.font = '18px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText('Note: Classic mode has 100% regular apples only', GameConstants.SCREEN_WIDTH / 2, currentY);
+        currentY += lineHeight + 10;
+        
+        ctx.textAlign = 'left';
+        ctx.font = '20px monospace';
         ctx.fillStyle = '#ff0000';
         ctx.fillRect(leftMargin - 35, currentY - 2, 25, 25);
         ctx.fillStyle = '#fff';
@@ -725,6 +875,11 @@ class Renderer {
         const statusDiv = document.getElementById('status-effects');
         statusDiv.innerHTML = '';
         
+        // Show lives in easy mode
+        if (state.difficulty === Difficulty.EASY) {
+            statusDiv.innerHTML += `<div style="color: #fff">Lives: ${state.lives}</div>`;
+        }
+        
         if (state.cannotEatApples && state.cannotEatTimer > 0.0) {
             const countdown = Math.ceil(state.cannotEatTimer);
             statusDiv.innerHTML += `<div style="color: ${GameConstants.POISON_COLOR}">Poisoned: ${countdown}</div>`;
@@ -816,16 +971,39 @@ class Game {
             this.keys[e.key.toLowerCase()] = true;
             this.keys[e.code.toLowerCase()] = true;
             
+            // Handle difficulty selection
+            if (this.state.showDifficultySelection) {
+                if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') {
+                    this.state.selectedDifficultyIndex = 0;
+                }
+                if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') {
+                    this.state.selectedDifficultyIndex = 1;
+                }
+                if (e.key === ' ' || e.key === 'Enter') {
+                    this.state.difficulty = this.state.selectedDifficultyIndex === 0 ? Difficulty.EASY : Difficulty.NORMAL;
+                    this.state.lives = this.state.difficulty === Difficulty.EASY ? 2 : 1;
+                    this.state.showDifficultySelection = false;
+                    this.state.showModeSelection = true;
+                }
+                return;
+            }
+            
             // Handle mode selection
             if (this.state.showModeSelection) {
                 if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') {
-                    this.state.selectedModeIndex = 0;
+                    this.state.selectedModeIndex = Math.max(0, this.state.selectedModeIndex - 1);
                 }
                 if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') {
-                    this.state.selectedModeIndex = 1;
+                    this.state.selectedModeIndex = Math.min(2, this.state.selectedModeIndex + 1);
                 }
                 if (e.key === ' ' || e.key === 'Enter') {
-                    this.state.gameMode = this.state.selectedModeIndex === 0 ? GameMode.REGULAR : GameMode.ACCELERATED;
+                    if (this.state.selectedModeIndex === 0) {
+                        this.state.gameMode = GameMode.REGULAR;
+                    } else if (this.state.selectedModeIndex === 1) {
+                        this.state.gameMode = GameMode.ACCELERATED;
+                    } else {
+                        this.state.gameMode = GameMode.CLASSIC;
+                    }
                     this.state.showModeSelection = false;
                     this.state.showInstructions = true;
                     
@@ -845,6 +1023,7 @@ class Game {
                     }
                     
                     // Reset game state
+                    this.state.lives = this.state.difficulty === Difficulty.EASY ? 2 : 1;
                     this.state.dx = 0;
                     this.state.dy = 0;
                     this.state.directionQueue = [];
@@ -917,7 +1096,8 @@ class Game {
                 }
                 if (e.key === 'm' || e.key === 'M') {
                     this.state.gameOver = false;
-                    this.state.showModeSelection = true;
+                    this.state.showDifficultySelection = true;
+                    this.state.showModeSelection = false;
                     this.state.showInstructions = false;
                     this.state.score = 0;
                     this.state.snake = [];
@@ -1007,7 +1187,9 @@ class Game {
         GameLogic.processMovement(this.state, deltaTime);
         
         // Render
-        if (this.state.showModeSelection) {
+        if (this.state.showDifficultySelection) {
+            Renderer.drawDifficultySelectionScreen(this.ctx, this.state);
+        } else if (this.state.showModeSelection) {
             Renderer.drawModeSelectionScreen(this.ctx, this.state);
         } else if (this.state.showInstructions) {
             Renderer.drawInstructionsScreen(this.ctx);
